@@ -1,11 +1,19 @@
 const express = require("express");
 const router = express.Router();
-const { register, login } = require("../controllers/adminController");
 const { Student } = require("../models");
 const sendEmail = require("../utils/sendEmail");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+
+const { 
+  register, 
+  login, 
+  getAdmins, 
+  createAdmin, 
+  updateAdmin, 
+  deleteAdmin 
+} = require("../controllers/adminController");
 
 // ------------------------------
 // AUTH ROUTES
@@ -13,20 +21,27 @@ const path = require("path");
 router.post("/register", register);
 router.post("/login", login);
 
+// CRUD
+router.get("/", getAdmins);
+router.post("/", createAdmin);
+router.put("/:id", updateAdmin);
+router.delete("/:id", deleteAdmin);
+
 // ------------------------------
 // HELPER FUNCTION TO GENERATE PDF
 // ------------------------------
 async function generatePDF(type, student) {
   try {
     const certificatesDir = path.join(__dirname, "../certificates");
-    if (!fs.existsSync(certificatesDir)) fs.mkdirSync(certificatesDir, { recursive: true });
+    if (!fs.existsSync(certificatesDir)) {
+      fs.mkdirSync(certificatesDir, { recursive: true });
+    }
 
     const fileName = `${type}_${student.name.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
     const filePath = path.join(certificatesDir, fileName);
 
-    // Use landscape for completion certificate, portrait for offer letter
     const doc = new PDFDocument({
-      size: type === "completion" ? [842, 595] : "A4", // Landscape for completion
+      size: "A4",
       margins: { top: 50, bottom: 50, left: 50, right: 50 }
     });
     
@@ -36,13 +51,16 @@ async function generatePDF(type, student) {
     if (type === "offer") {
       await generateOfferLetter(doc, student);
     } else {
-      await generateCompletionCertificate(doc, student);
+      await generateCompletionLetter(doc, student);
     }
 
     doc.end();
 
     return new Promise((resolve, reject) => {
-      writeStream.on("finish", () => resolve(filePath));
+      writeStream.on("finish", () => {
+        console.log(`✅ PDF saved at: ${filePath}`);
+        resolve(filePath);
+      });
       writeStream.on("error", reject);
     });
   } catch (err) {
@@ -51,296 +69,371 @@ async function generatePDF(type, student) {
   }
 }
 
+function calculateDuration(startDate, endDate) {
+  const start = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T00:00:00");
+  let diffTime = end - start;
+  let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  let years = Math.floor(diffDays / 365);
+  diffDays %= 365;
+  let months = Math.floor(diffDays / 30);
+  diffDays %= 30;
+  let weeks = Math.floor(diffDays / 7);
+  diffDays %= 7;
+
+  let duration = [];
+  if (years > 0) duration.push(`${years} Year${years > 1 ? "s" : ""}`);
+  if (months > 0) duration.push(`${months} Month${months > 1 ? "s" : ""}`);
+  if (weeks > 0) duration.push(`${weeks} Week${weeks > 1 ? "s" : ""}`);
+  if (diffDays > 0) duration.push(`${diffDays} Day${diffDays > 1 ? "s" : ""}`);
+
+  if (duration.length === 0) return "0 Days";
+
+  return duration.join(" ");
+}
+
 // ------------------------------
-// OFFER LETTER DESIGN (SINGLE PAGE)
+// OFFER LETTER DESIGN
 // ------------------------------
 async function generateOfferLetter(doc, student) {
-  // Green background header
-  doc.rect(0, 0, doc.page.width, 100)
-     .fill("#1e6b52");
-  
-  // Company Logo
-  const logoPath = path.join(__dirname, "../assets/logo.png");
-  if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, 50, 20, { width: 60, height: 60 });
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const margin = 50;
+  let yPosition = 100;
+
+  // Calculate duration
+  const duration = calculateDuration(student.startDate, student.endDate);
+
+  // Register Noto font for rupee symbol
+  const fontPath = path.join(__dirname, "../fonts/NotoSans-Regular.ttf");
+  let hasNotoFont = false;
+  if (fs.existsSync(fontPath)) {
+    doc.registerFont("Noto", fontPath);
+    hasNotoFont = true;
+    console.log("✅ Noto font registered successfully");
+  } else {
+    console.log("⚠️ Noto font not found, using fallback for rupee symbol");
   }
 
-  // Company Name
-  doc.fontSize(24)
-     .fillColor("#ffffff")
-     .font("Helvetica-Bold")
-     .text("RORIRI SOFTWARE SOLUTIONS", 120, 35)
-     .fontSize(10)
-     .font("Helvetica")
-     .text("Innovating Tomorrow's Solutions Today", 120, 65);
+  // Add header image
+  const headerPath = path.join(__dirname, "../assets/header.png");
+  if (fs.existsSync(headerPath)) {
+    doc.image(headerPath, 0, 0, { width: pageWidth, height: 120 });
+    yPosition = 140;
+  }
 
-  // Main content area
-  doc.fillColor("#000000");
-  
   // Offer Letter Title
-  doc.fontSize(20)
-     .font("Helvetica-Bold")
-     .fillColor("#1e6b52")
-     .text("INTERNSHIP OFFER LETTER", 50, 130, { align: "center" });
+  doc.fontSize(12)
+     .font("Times-Bold")
+     .fillColor("black")
+     .text("Internship Offer Letter", margin, yPosition, { 
+       align: "center",
+       width: pageWidth - (2 * margin)
+     });
   
-  // Underline for title
-  doc.moveTo(150, 155)
-     .lineTo(445, 155)
-     .strokeColor("#1e6b52")
-     .lineWidth(1)
-     .stroke();
+  yPosition += 50;
 
   // Date
   doc.fontSize(10)
+     .font("Times-Roman")
      .fillColor("#666666")
-     .text(`Date: ${new Date().toLocaleDateString()}`, 400, 170, { align: "right" });
-
-  // Content - using explicit Y positions to control layout
-  let yPosition = 200;
-  
-  doc.fontSize(12)
-     .fillColor("#000000")
-     .font("Helvetica")
-     .text(`Dear ${student.name},`, 50, yPosition);
+     .text(`Date: ${new Date().toLocaleDateString()}`, margin, yPosition);
 
   yPosition += 30;
   
-  doc.font("Helvetica-Bold")
-     .text("CONGRATULATIONS!", 50, yPosition, { continued: true })
-     .font("Helvetica")
-     .text(` We are pleased to offer you an internship position at RORIRI SOFTWARE SOLUTIONS.`);
-
-  yPosition += 50;
-  
-  doc.text(`After careful consideration, we are impressed with your academic background from ${student.college} and your enthusiasm for joining our team in the ${student.department} department.`, 50, yPosition, {
-    width: 500,
-    align: 'justify'
-  });
-
-  yPosition += 50;
-  
-  doc.text("Internship Details:", 50, yPosition, { underline: true });
+  // Salutation
+  doc.fontSize(12)
+     .fillColor("#000000")
+     .font("Times-Bold")
+     .text(`Dear ${student.name},`, margin, yPosition);
 
   yPosition += 25;
   
-  // Internship details in a styled box
-  const detailsX = 70;
-  const detailsY = yPosition;
-  
-  doc.rect(detailsX, detailsY, 470, 70)
-     .fill("#f8f9fa")
-     .stroke("#1e6b52");
-  
-  doc.fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("• Start Date:", detailsX + 20, detailsY + 15)
-     .fillColor("#000000")
-     .font("Helvetica")
-     .text(student.startDate, detailsX + 100, detailsY + 15);
-  
-  doc.fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("• End Date:", detailsX + 20, detailsY + 35)
-     .fillColor("#000000")
-     .font("Helvetica")
-     .text(student.endDate, detailsX + 100, detailsY + 35);
-  
-  doc.fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("• Department:", detailsX + 20, detailsY + 55)
-     .fillColor("#000000")
-     .font("Helvetica")
-     .text(student.department, detailsX + 120, detailsY + 55);
-
-  yPosition += 100;
-  
-  doc.text("During your internship, you will:", 50, yPosition, { underline: true });
-
-  yPosition += 25;
-  
-  doc.text("• Work on real-world projects under experienced mentors", 70, yPosition);
-  yPosition += 20;
-  doc.text("• Develop practical skills in your field of study", 70, yPosition);
-  yPosition += 20;
-  doc.text("• Collaborate with our dynamic team of professionals", 70, yPosition);
-  yPosition += 20;
-  doc.text("• Gain valuable industry experience", 70, yPosition);
+  // Introduction paragraph
+  doc.font("Times-Roman")
+     .text("We are pleased to offer you an ", margin, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text("Internship Opportunity", { continued: true })
+     .font("Times-Roman")
+     .text(" at ", { continued: true })
+     .font("Times-Bold")
+     .text("RORIRI SOFTWARE SOLUTIONS", { continued: true })
+     .font("Times-Roman")
+     .text(". We appreciate your enthusiasm and potential and believe this internship will provide you with valuable industry experience.");
 
   yPosition += 50;
   
-  doc.text("We believe this internship will provide you with valuable experience and contribute significantly to your professional development.", 50, yPosition, {
-    width: 500,
+  // Internship Details Section
+  doc.font("Times-Bold")
+     .text("Internship Details:", margin, yPosition);
+
+  yPosition += 25;
+
+  // Internship details
+  const details = [
+    { label: "• Position:", value: student.department },
+    { 
+      label: "• Start Date:", 
+      value: new Date(student.startDate).toLocaleDateString("en-GB") 
+    },
+    { label: "• Duration:", value: duration },
+    { label: "• Location:", value: "Roriri Software Solutions Pvt. Ltd, Nallanthapuram, Kalakad" },
+    {
+      label: "• Stipend:",
+      value: student.stipendType === "Unpaid"
+        ? "Unpaid Internship"
+        : `₹${student.stipendAmount}`,
+      needsRupee: student.stipendType === "Paid"
+    }
+  ];
+
+  // Render details with special handling for rupee symbol
+  details.forEach(detail => {
+    doc.fillColor("black")
+       .font("Times-Bold")
+       .text(detail.label.padEnd(22, " "), margin + 10, yPosition)
+       .fillColor("#000000");
+    
+    if (detail.needsRupee && hasNotoFont) {
+      // Use Noto font for rupee symbol
+      doc.font("Noto")
+         .text(detail.value, margin + 80, yPosition)
+         .font("Times-Roman"); // Switch back to Times-Roman
+    } else {
+      doc.font("Times-Roman")
+         .text(detail.value, margin + 80, yPosition);
+    }
+    yPosition += 18;
+  });
+
+  yPosition += 20;
+  
+  // Terms Section
+  doc.font("Times-Bold")
+     .text("Internship Terms & Future Opportunities:", margin, yPosition);
+
+  yPosition += 25;
+
+  // Terms
+  doc.font("Times-Roman")
+     .text("• During the internship, you will work on ", margin + 20, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text(student.department, { continued: true })
+     .font("Times-Roman")
+     .text(" related projects.");
+  
+  yPosition += 20;
+  
+  doc.font("Times-Roman")
+     .text("• Your ", margin + 20, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text("performance will be evaluated", { continued: true })
+     .font("Times-Roman")
+     .text(" during the internship period.");
+  
+  yPosition += 20;
+  
+  doc.font("Times-Roman")
+     .text("• Upon successful completion of the internship, based on your performance and company requirements, we may offer you a ", margin + 20, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text("full-time position", { continued: true })
+     .font("Times-Roman")
+     .text(" with a fixed salary.");
+
+  yPosition += 30;
+  
+  // Closing paragraph
+  const closingText = "We are excited to have you as part of our team and look forward to seeing your contributions.";
+  
+  doc.text(closingText, margin, yPosition, {
+    width: pageWidth - (2 * margin),
     align: 'justify'
   });
 
+  yPosition += 30;
+  
+  // Congratulations
+  doc.font("Times-Bold")
+     .text("Congratulations once again, and welcome to Roriri Software Solutions Pvt. Ltd.", margin, yPosition, {
+       width: pageWidth - (2 * margin),
+       align: 'justify'
+     });
+
+  // Signature section
   yPosition += 40;
   
-  doc.text("To accept this offer, please confirm your participation by replying to this email within 5 business days.", 50, yPosition, {
-    width: 500,
+  doc.fontSize(12)
+     .font("Times-Bold")
+     .fillColor("black")
+     .text("Best regards,", margin, yPosition);
+
+  yPosition += 25;
+
+  // Add signature image
+  const signaturePath = path.join(__dirname, "../assets/signature.png");
+  if (fs.existsSync(signaturePath)) {
+    doc.image(signaturePath, margin, yPosition, { width: 100, height: 40 });
+    yPosition += 50;
+  } else {
+    yPosition += 20;
+  }
+
+  doc.font("Times-Bold")
+     .fillColor("#000000")
+     .text("Ragupathi,", margin, yPosition)
+     .font("Times-Roman")
+     .text("Chief Executive Officer (CEO),", margin, yPosition + 15)
+     .font("Times-Bold")
+     .text("Roriri Software Solutions Pvt Ltd", margin, yPosition + 35);
+
+  // Add footer image at bottom
+  const footerPath = path.join(__dirname, "../assets/footer.png");
+  if (fs.existsSync(footerPath)) {
+    const footerY = pageHeight - 100;
+    doc.image(footerPath, 0, footerY, { width: pageWidth, height: 100 });
+  }
+}
+
+// ------------------------------
+// COMPLETION LETTER DESIGN
+// ------------------------------
+async function generateCompletionLetter(doc, student) {
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const margin = 50;
+  let yPosition = 80;
+
+  // Calculate duration
+  const duration = calculateDuration(student.startDate, student.endDate);
+
+  // Completion Letter Title
+  doc.fontSize(16)
+     .font("Times-Bold")
+     .fillColor("black")
+     .text("INTERNSHIP COMPLETION LETTER", margin, yPosition, { 
+       align: "center",
+       width: pageWidth - (2 * margin)
+     });
+
+  yPosition += 40;
+
+  // Salutation
+  doc.fontSize(12)
+     .fillColor("#000000")
+     .font("Times-Bold")
+     .text(`Dear ${student.name},`, margin, yPosition);
+
+  yPosition += 25;
+
+  // Main content paragraphs
+  doc.font("Times-Roman")
+     .text("We are delighted to acknowledge the successful completion of your Internship with ", margin, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text("Roriri Software Solutions Pvt Ltd", { continued: true })
+     .font("Times-Roman")
+     .text(". Your Internship, which ran from ", { continued: true })
+     .font("Times-Bold")
+     .text(`${student.startDate} to ${student.endDate}`, { continued: true })
+     .font("Times-Roman")
+     .text(" has come to a successful close, and we are pleased to report that you achieved a perfect attendance record throughout this period.");
+
+  yPosition += 80;
+
+  // Paragraph 2
+  doc.text("Your commitment to your role and your consistent presence at the office have been truly commendable. Your contributions to our ", margin, yPosition, { continued: true })
+     .font("Times-Bold")
+     .text(student.department, { continued: true })
+     .font("Times-Roman")
+     .text(" were highly valued, and your dedication and work ethic have not gone unnoticed.");
+
+  yPosition += 60;
+
+  // Paragraph 3
+  doc.text("It has been a pleasure having you with us as an intern. You brought a fresh perspective to our team, and we hope that your time here was both insightful and rewarding.", margin, yPosition, {
+    width: pageWidth - (2 * margin),
     align: 'justify'
   });
 
-  yPosition += 30;
-  
-  doc.text("We look forward to welcoming you to our team!", 50, yPosition, { align: "center" });
+  yPosition += 50;
 
-  // Footer with signatures - ensure it fits on one page
-  const footerY = 650;
-  
-  doc.moveTo(50, footerY)
-     .lineTo(200, footerY)
-     .strokeColor("#000000")
-     .lineWidth(1)
-     .stroke();
-  
-  doc.moveTo(350, footerY)
-     .lineTo(500, footerY)
-     .strokeColor("#000000")
-     .lineWidth(1)
-     .stroke();
+  // Paragraph 4 - Thank you
+  doc.font("Times-Bold")
+     .text(`Thank you once again for your exceptional performance and dedication during this ${duration} of Internship Period.`, margin, yPosition, {
+       width: pageWidth - (2 * margin),
+       align: 'justify'
+     });
 
-  doc.fontSize(10)
-     .text("Intern Signature", 50, footerY + 10)
-     .text("Company Representative", 350, footerY + 10);
-
+  // Signature section
+  yPosition += 50;
+  
   doc.fontSize(12)
-     .font("Helvetica-Bold")
-     .fillColor("#1e6b52")
-     .text("Best Regards,", 50, footerY + 40)
-     .font("Helvetica")
-     .fillColor("#000000")
-     .text("Internship Coordinator", 50, footerY + 60)
-     .text("RORIRI SOFTWARE SOLUTIONS", 50, footerY + 80);
-}
+     .font("Times-Bold")
+     .fillColor("black")
+     .text("Best regards,", margin, yPosition);
 
-// ------------------------------
-// COMPLETION CERTIFICATE DESIGN (LANDSCAPE)
-// ------------------------------
-async function generateCompletionCertificate(doc, student) {
-  const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
+  yPosition += 25;
 
-  // Decorative border
-  doc.rect(30, 30, pageWidth - 60, pageHeight - 60)
-     .stroke("#1e6b52")
-     .lineWidth(3);
-
-  // Inner decorative border
-  doc.rect(40, 40, pageWidth - 80, pageHeight - 80)
-     .stroke("#d4af37")
-     .lineWidth(2);
-
-  // Certificate background
-  doc.rect(45, 45, pageWidth - 90, pageHeight - 90)
-     .fill("#f0f8f5");
-
-  // Company Logo - centered at top
-  const logoPath = path.join(__dirname, "../assets/logo.png");
-  if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, pageWidth / 2 - 40, 60, { width: 80, height: 80 });
+  // Add signature image
+  const signaturePath = path.join(__dirname, "../assets/signature.png");
+  if (fs.existsSync(signaturePath)) {
+    doc.image(signaturePath, margin, yPosition, { width: 100, height: 40 });
+    yPosition += 50;
+  } else {
+    yPosition += 20;
   }
 
-  // Company Name
-  doc.fontSize(20)
-     .fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("RORIRI SOFTWARE SOLUTIONS", 0, 150, { align: "center" })
-     .fontSize(12)
-     .fillColor("#666666")
-     .text("Innovating Tomorrow's Solutions Today", 0, 175, { align: "center" });
+  doc.font("Times-Bold")
+     .fillColor("#000000")
+     .text("Ragupathi R,", margin, yPosition)
+     .font("Times-Roman")
+     .text("Chief Executive Officer (CEO),", margin, yPosition + 15)
+     .font("Times-Bold")
+     .text("Roriri Software Solutions Pvt Ltd", margin, yPosition + 35);
 
-  // Certificate Title
-  doc.fontSize(36)
-     .fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("CERTIFICATE OF COMPLETION", 0, 220, { align: "center" });
+  // Add footer image at bottom
 
-  // Decorative line
-  doc.moveTo(100, 260)
-     .lineTo(pageWidth - 100, 260)
-     .strokeColor("#d4af37")
-     .lineWidth(2)
-     .stroke();
-
-  // Main certificate text
-  doc.fontSize(16)
-     .fillColor("#333333")
-     .font("Helvetica")
-     .text("This is to certify that", 0, 300, { align: "center" });
-
-  // Student name with special styling
-  doc.fontSize(32)
-     .fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text(student.name.toUpperCase(), 0, 330, { align: "center" });
-
-  doc.fontSize(16)
-     .fillColor("#333333")
-     .font("Helvetica")
-     .text(`has successfully completed the internship program in`, 0, 380, { align: "center" });
-
-  // Department with emphasis
-  doc.fontSize(20)
-     .fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text(student.department, 0, 410, { align: "center" });
-
-  doc.fontSize(16)
-     .fillColor("#333333")
-     .font("Helvetica")
-     .text(`from ${student.college}`, 0, 440, { align: "center" });
-
-  // Internship period
-  doc.text(`during the period from ${student.startDate} to ${student.endDate}`, 0, 470, { align: "center" });
-
-  // Achievement description
-  doc.fontSize(14)
-     .font("Helvetica-Oblique")
-     .fillColor("#555555")
-     .text("The intern has demonstrated exceptional dedication, professionalism,", 0, 510, { align: "center" })
-     .text("and eagerness to learn throughout the internship program.", 0, 530, { align: "center" });
-
-  // Signatures area
-  const signatureY = pageHeight - 120;
-
-  // Left signature (Company)
-  doc.moveTo(100, signatureY)
-     .lineTo(280, signatureY)
-     .strokeColor("#1e6b52")
-     .stroke();
-
-  doc.fontSize(12)
-     .fillColor("#1e6b52")
-     .font("Helvetica-Bold")
-     .text("Sarah Johnson", 100, signatureY + 10)
-     .font("Helvetica")
-     .fontSize(10)
-     .text("Internship Coordinator", 100, signatureY + 25)
-     .text("RORIRI SOFTWARE SOLUTIONS", 100, signatureY + 40);
-
-  // Right signature (Date)
-  doc.moveTo(pageWidth - 280, signatureY)
-     .lineTo(pageWidth - 100, signatureY)
-     .strokeColor("#1e6b52")
-     .stroke();
-
-  doc.fontSize(10)
-     .fillColor("#666666")
-     .text(`Issued on: ${new Date().toLocaleDateString('en-US', { 
-       year: 'numeric', 
-       month: 'long', 
-       day: 'numeric' 
-     })}`, pageWidth - 280, signatureY + 10, { width: 180, align: "center" });
-
-  // Certificate ID at bottom
-  const certId = `RSS-${Date.now().toString().slice(-8)}`;
-  doc.fontSize(8)
-     .fillColor("#999999")
-     .text(`Certificate ID: ${certId}`, 0, pageHeight - 30, { align: "center" });
 }
 
 // ------------------------------
-// SEND OFFER LETTER
+// GENERATE PDF FOR PREVIEW (UPDATED)
+// ------------------------------
+router.post("/generate-preview", async (req, res) => {
+  try {
+    const { studentId, type } = req.body; // type: 'offer' or 'completion'
+    const student = await Student.findByPk(studentId);
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // Validate required student data
+    if (!student.name || !student.college || !student.department || !student.startDate || !student.endDate) {
+      return res.status(400).json({ message: "Student data is incomplete. Please ensure all fields are filled." });
+    }
+
+    console.log(`📄 Generating ${type} letter preview for:`, student.name);
+    const filePath = await generatePDF(type, student);
+
+    // Read the generated PDF file and send as base64
+    const pdfBuffer = fs.readFileSync(filePath);
+    const base64PDF = pdfBuffer.toString('base64');
+
+    res.json({
+      success: true,
+      pdfData: base64PDF,
+      fileName: `${type}_letter_${student.name.replace(/\s+/g, '_')}.pdf`,
+      filePath: filePath, // Return file path for debugging
+      message: `${type.charAt(0).toUpperCase() + type.slice(1)} letter generated successfully for preview!`
+    });
+  } catch (err) {
+    console.error("❌ Error generating PDF preview:", err);
+    res.status(500).json({ message: "Server error: " + err.message });
+  }
+});
+
+// ------------------------------
+// SEND OFFER LETTER (UPDATED)
 // ------------------------------
 router.post("/send-offer", async (req, res) => {
   try {
@@ -385,7 +478,11 @@ hr@roririsolutions.com`,
     student.offerSent = true;
     await student.save();
 
-    res.json({ success: true, message: "Professional offer letter sent successfully!" });
+    res.json({ 
+      success: true, 
+      message: "Professional offer letter sent successfully!",
+      filePath: filePath // For debugging
+    });
   } catch (err) {
     console.error("❌ Error sending offer letter:", err);
     res.status(500).json({ message: "Server error: " + err.message });
@@ -393,7 +490,7 @@ hr@roririsolutions.com`,
 });
 
 // ------------------------------
-// SEND COMPLETION CERTIFICATE
+// SEND COMPLETION CERTIFICATE (UPDATED)
 // ------------------------------
 router.post("/send-completion", async (req, res) => {
   try {
@@ -409,18 +506,18 @@ router.post("/send-completion", async (req, res) => {
       return res.status(400).json({ message: "Student data is incomplete. Please ensure all fields are filled." });
     }
 
-    console.log("📄 Generating professional completion certificate for:", student.name);
+    console.log("📄 Generating professional completion letter for:", student.name);
     const filePath = await generatePDF("completion", student);
 
-    console.log("📤 Sending completion certificate to:", student.email);
+    console.log("📤 Sending completion letter to:", student.email);
     await sendEmail(
       student.email,
-      "Internship Completion Certificate - RORIRI SOFTWARE SOLUTIONS",
+      "Internship Completion Letter - RORIRI SOFTWARE SOLUTIONS",
       `Dear ${student.name},
 
 Congratulations on successfully completing your internship at RORIRI SOFTWARE SOLUTIONS!
 
-We are pleased to attach your Internship Completion Certificate in recognition of your hard work and dedication during your time with us in the ${student.department} department.
+We are pleased to attach your Internship Completion Letter in recognition of your hard work and dedication during your time with us in the ${student.department} department.
 
 Your contributions from ${student.startDate} to ${student.endDate} have been valuable, and we wish you continued success in your academic and professional journey.
 
@@ -430,7 +527,7 @@ Best Regards,
 Internship Coordinator
 RORIRI SOFTWARE SOLUTIONS
 hr@roririsolutions.com`,
-      [{ filename: `Completion_Certificate_${student.name.replace(/\s+/g, '_')}.pdf`, path: filePath }]
+      [{ filename: `Completion_Letter_${student.name.replace(/\s+/g, '_')}.pdf`, path: filePath }]
     );
 
     student.completionSent = true;
@@ -438,10 +535,11 @@ hr@roririsolutions.com`,
 
     res.json({
       success: true,
-      message: "Professional completion certificate sent successfully!",
+      message: "Professional completion letter sent successfully!",
+      filePath: filePath // For debugging
     });
   } catch (err) {
-    console.error("❌ Error sending completion certificate:", err);
+    console.error("❌ Error sending completion letter:", err);
     res.status(500).json({ message: "Server error: " + err.message });
   }
 });

@@ -10,6 +10,18 @@ const Student = sequelize.define("Student", {
   department: { type: DataTypes.STRING },
   startDate: { type: DataTypes.DATEONLY },
   endDate: { type: DataTypes.DATEONLY },
+
+  // ✅ New Fields
+  stipendType: { 
+    type: DataTypes.ENUM("Paid", "Unpaid"), 
+    allowNull: false, 
+    defaultValue: "Unpaid" 
+  },
+  stipendAmount: { 
+    type: DataTypes.INTEGER, 
+    allowNull: true 
+  },
+
   offerSent: { type: DataTypes.BOOLEAN, defaultValue: false },
   completionSent: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, {
