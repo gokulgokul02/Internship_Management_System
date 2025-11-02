@@ -1,14 +1,16 @@
 // backend/controllers/studentController.js
-const Student = require("../models/Student");
+const { Student } = require("../models");
 const sendEmail = require("../utils/sendEmail");
 
+// ---------------------------
+// BASIC CRUD
+// ---------------------------
 exports.createStudent = async (req, res) => {
   try {
     const student = await Student.create(req.body);
     res.json(student);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -17,8 +19,7 @@ exports.getAll = async (req, res) => {
     const students = await Student.findAll({ order: [["createdAt", "DESC"]] });
     res.json(students);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -28,19 +29,16 @@ exports.getOne = async (req, res) => {
     if (!student) return res.status(404).json({ message: "Not found" });
     res.json(student);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
 exports.updateStudent = async (req, res) => {
   try {
     await Student.update(req.body, { where: { id: req.params.id } });
-    const updated = await Student.findByPk(req.params.id);
-    res.json(updated);
+    res.json(await Student.findByPk(req.params.id));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -49,51 +47,126 @@ exports.deleteStudent = async (req, res) => {
     await Student.destroy({ where: { id: req.params.id } });
     res.json({ message: "Deleted" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
-exports.sendOffer = async (req, res) => {
+// --------------------------------------------------
+// PAYMENT STATUS
+// --------------------------------------------------
+exports.markPaymentCompleted = async (req, res) => {
   try {
     const student = await Student.findByPk(req.params.id);
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    const html = `
-      <p>Dear ${student.name},</p>
-      <p>Congratulations — you are offered an internship from <strong>Company</strong>.</p>
-      <p>Internship duration: ${student.startDate || "N/A"} — ${student.endDate || "N/A"}</p>
-      <p>Regards,<br/>Internship Management System</p>
-    `;
-
-    await sendEmail(student.email, "Internship Offer Letter", html);
-    student.offerSent = true;
+    student.paymentStatus = "Completed";
+    if (req.file) student.paymentProof = req.file.filename;
     await student.save();
-    res.json({ message: "Offer sent" });
+
+    res.json({ message: "Payment marked as Completed", student });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
-exports.sendCompletion = async (req, res) => {
+exports.markAsUnpaid = async (req, res) => {
   try {
     const student = await Student.findByPk(req.params.id);
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    const html = `
-      <p>Dear ${student.name},</p>
-      <p>Congratulations on completing your internship.</p>
-      <p>We appreciate your effort.</p>
-      <p>Regards,<br/>Internship Management System</p>
-    `;
-
-    await sendEmail(student.email, "Internship Completion Letter", html);
-    student.completionSent = true;
+    student.paymentStatus = "Unpaid";
+    student.paymentProof = null;
     await student.save();
-    res.json({ message: "Completion sent" });
+
+    res.json({ message: "Payment marked as Unpaid", student });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
+};
+
+// --------------------------------------------------
+// APPROVAL ACTIONS
+// --------------------------------------------------
+exports.approveStudent = async (req, res) => {
+  try {
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    await student.update({
+      paymentStatus: "Completed",
+      is_approved: true,
+      approvedBy: req.admin.id,
+      approvedAt: new Date()
+    });
+
+    res.json({ message: "Approved successfully", student });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.rejectStudent = async (req, res) => {
+  try {
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    await student.update({
+      paymentStatus: "Failed",
+      is_approved: false,
+      approvedBy: req.admin.id,
+      approvedAt: new Date()
+    });
+
+    res.json({ message: "Rejected successfully", student });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.revokeApproval = async (req, res) => {
+  try {
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    await student.update({
+      paymentStatus: "Pending",
+      is_approved: false,
+      approvedBy: null,
+      approvedAt: null
+    });
+
+    res.json({ message: "Approval revoked", student });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// --------------------------------------------------
+// PDF PREVIEW (TEMP HTML for now — real PDF later)
+// --------------------------------------------------
+exports.generateOfferPreview = async (req, res) => {
+  res.json({ message: "Offer preview generated successfully" });
+};
+
+exports.generateCompletionPreview = async (req, res) => {
+  res.json({ message: "Completion preview generated successfully" });
+};
+
+exports.generateCertificatePreview = async (req, res) => {
+  res.json({ message: "Certificate preview generated successfully" });
+};
+
+// --------------------------------------------------
+// BULK OPERATIONS
+// --------------------------------------------------
+exports.bulkSendOffers = async (req, res) => {
+  res.json({ message: "Bulk offer letters sent" });
+};
+
+exports.bulkSendCompletions = async (req, res) => {
+  res.json({ message: "Bulk completion letters sent" });
+};
+
+exports.bulkUpdatePayments = async (req, res) => {
+  res.json({ message: "Bulk payments updated" });
 };

@@ -5,70 +5,48 @@ const sendEmail = require("../utils/sendEmail");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const authMiddleware = require("../middleware/authMiddleware"); // Add this import
 
+const adminController = require("../controllers/adminController");
 const { 
-  register, 
-  login, 
-  getAdmins, 
-  createAdmin, 
-  updateAdmin, 
-  deleteAdmin 
-} = require("../controllers/adminController");
+  protect, 
+  requireSuperAdmin, 
+  requireAdmin, 
+  canAccessAdmin 
+} = require("../middleware/authMiddleware");
+// In adminRoutes.js
+router.get("/admins", protect, requireSuperAdmin, adminController.getAdmins);
+
+// ✅ Login (No Auth Required)
+router.post("/login", adminController.login);
+
+// ✅ Register Admin (Only SuperAdmin can do this)
+router.post("/register", protect, requireSuperAdmin, adminController.register);
+
+// ✅ Create Admin — Same as register (Admin management panel)
+router.post("/create", protect, requireSuperAdmin, adminController.createAdmin);
+
+// ✅ View all admins (Only SuperAdmin)
+router.get("/", protect, requireSuperAdmin, adminController.getAdmins);
+
+// ✅ Update ANY admin — SuperAdmin OR self
+router.put("/:id", protect, canAccessAdmin, adminController.updateAdmin);
+
+// ✅ Delete admin (SuperAdmin only, cannot delete self → already handled)
+router.delete("/:id", protect, requireSuperAdmin, adminController.deleteAdmin);
+
+// ✅ Get currently logged-in admin’s profile
+router.get("/profile/me", protect, adminController.getProfile);
+
+// ✅ Update own profile
+router.put("/profile/me", protect, adminController.updateProfile);
+
+
+
 
 // ------------------------------
-// AUTH ROUTES
+// HELPER FUNCTIONS
 // ------------------------------
-router.post("/register", register);
-router.post("/login", login);
-
-// CRUD
-router.get("/", getAdmins);
-router.post("/", createAdmin);
-router.put("/:id", updateAdmin);
-router.delete("/:id", deleteAdmin);
-
-// ------------------------------
-// HELPER FUNCTION TO GENERATE PDF
-// ------------------------------
-async function generatePDF(type, student) {
-  try {
-    const certificatesDir = path.join(__dirname, "../certificates");
-    if (!fs.existsSync(certificatesDir)) {
-      fs.mkdirSync(certificatesDir, { recursive: true });
-    }
-
-    const fileName = `${type}_${student.name.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
-    const filePath = path.join(certificatesDir, fileName);
-
-    const doc = new PDFDocument({
-      size: "A4",
-      margins: { top: 50, bottom: 50, left: 50, right: 50 }
-    });
-    
-    const writeStream = fs.createWriteStream(filePath);
-    doc.pipe(writeStream);
-
-    if (type === "offer") {
-      await generateOfferLetter(doc, student);
-    } else {
-      await generateCompletionLetter(doc, student);
-    }
-
-    doc.end();
-
-    return new Promise((resolve, reject) => {
-      writeStream.on("finish", () => {
-        console.log(`✅ PDF saved at: ${filePath}`);
-        resolve(filePath);
-      });
-      writeStream.on("error", reject);
-    });
-  } catch (err) {
-    console.error("❌ Error generating PDF:", err);
-    throw err;
-  }
-}
-
 function calculateDuration(startDate, endDate) {
   const start = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
@@ -93,41 +71,149 @@ function calculateDuration(startDate, endDate) {
   return duration.join(" ");
 }
 
+function getCurrentDateFormatted() {
+  return new Date().toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+// Safe image function to prevent errors
+function addImageSafe(doc, imagePath, x, y, options = {}) {
+  try {
+    if (fs.existsSync(imagePath)) {
+      doc.image(imagePath, x, y, options);
+      return true;
+    } else {
+      console.log(`⚠️ Image not found: ${imagePath}`);
+      // Create a simple text signature as fallback
+      doc.fontSize(12)
+         .font('Times-Bold')
+         .text('_________________________', x, y + 10)
+         .text('Ragupathi R', x, y + 25)
+         .font('Times-Roman')
+         .text('Chief Executive Officer', x, y + 40);
+      return false;
+    }
+  } catch (error) {
+    console.log(`⚠️ Error loading image: ${imagePath}`, error.message);
+    // Fallback to text signature
+    doc.fontSize(12)
+       .font('Times-Bold')
+       .text('_________________________', x, y + 10)
+       .text('Ragupathi R', x, y + 25)
+       .font('Times-Roman')
+       .text('Chief Executive Officer', x, y + 40);
+    return false;
+  }
+}
+
 // ------------------------------
-// OFFER LETTER DESIGN
+// TEMPLATE PATHS (ONLY OFFER AND COMPLETION)
 // ------------------------------
-async function generateOfferLetter(doc, student) {
+const TEMPLATE_PATHS = {
+  offer: path.join(__dirname, "../templates/offer.png"),
+  completion: path.join(__dirname, "../templates/completion-template.png")
+};
+
+// ------------------------------
+// PDF GENERATION WITH TEMPLATES AS BACKGROUND
+// ------------------------------
+async function generatePDFFromTemplate(type, student, shouldSave = false) {
+  try {
+    const templatePath = TEMPLATE_PATHS[type];
+    
+    // Check if template exists, if not use dynamic generation
+    if (!fs.existsSync(templatePath)) {
+      console.log(`⚠️ ${type} template not found at ${templatePath}, generating dynamic PDF`);
+      return await generateDynamicPDF(type, student, shouldSave);
+    }
+
+    const certificatesDir = path.join(__dirname, "../certificates");
+    if (!fs.existsSync(certificatesDir)) {
+      fs.mkdirSync(certificatesDir, { recursive: true });
+    }
+
+    const fileName = `${type}_${student.name.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
+    const filePath = path.join(certificatesDir, fileName);
+
+    // Create new PDF document with appropriate orientation
+    let doc;
+    if (type === "completion") {
+      // Completion certificate in LANDSCAPE
+      doc = new PDFDocument({
+        size: "A4",
+        layout: "landscape",
+        margins: { top: 50, bottom: 50, left: 50, right: 50 }
+      });
+    } else {
+      // Offer letter in PORTRAIT
+      doc = new PDFDocument({
+        size: "A4",
+        margins: { top: 50, bottom: 50, left: 50, right: 50 }
+      });
+    }
+    
+    const writeStream = fs.createWriteStream(filePath);
+    doc.pipe(writeStream);
+
+    // Add template as background (first page only)
+    doc.image(templatePath, 0, 0, { 
+      width: doc.page.width, 
+      height: doc.page.height 
+    });
+
+    // Add content on top of template based on type
+    if (type === "offer") {
+      await addOfferLetterContentOnTemplate(doc, student);
+    } else if (type === "completion") {
+      await addCompletionCertificateContentOnTemplate(doc, student);
+    }
+      // Register Noto font for rupee symbol
+
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      writeStream.on("finish", () => {
+        console.log(`✅ ${type.toUpperCase()} PDF saved at: ${filePath}`);
+        // If shouldSave is false (for preview), return the file path but don't keep it permanently
+        if (!shouldSave) {
+          // For preview, we'll delete the file after sending, but for actual sending, we keep it
+          console.log(`📄 PDF generated for ${shouldSave ? 'permanent storage' : 'preview'}`);
+        }
+        resolve(filePath);
+      });
+      writeStream.on("error", reject);
+    });
+  } catch (err) {
+    console.error(`❌ Error generating ${type} PDF:`, err);
+    // Fallback to dynamic PDF generation
+    return await generateDynamicPDF(type, student, shouldSave);
+  }
+}
+
+
+
+// ------------------------------
+// CONTENT FUNCTIONS TO WRITE ON TEMPLATES
+// ------------------------------
+async function addOfferLetterContentOnTemplate(doc, student) {
   const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
   const margin = 50;
   let yPosition = 100;
-
-  // Calculate duration
   const duration = calculateDuration(student.startDate, student.endDate);
 
-  // Register Noto font for rupee symbol
-  const fontPath = path.join(__dirname, "../fonts/NotoSans-Regular.ttf");
-  let hasNotoFont = false;
-  if (fs.existsSync(fontPath)) {
-    doc.registerFont("Noto", fontPath);
-    hasNotoFont = true;
-    console.log("✅ Noto font registered successfully");
-  } else {
-    console.log("⚠️ Noto font not found, using fallback for rupee symbol");
-  }
+  // Company Header (positioned to fit on template)
 
-  // Add header image
-  const headerPath = path.join(__dirname, "../assets/header.png");
-  if (fs.existsSync(headerPath)) {
-    doc.image(headerPath, 0, 0, { width: pageWidth, height: 120 });
-    yPosition = 140;
-  }
+  yPosition += 40;
 
   // Offer Letter Title
-  doc.fontSize(12)
+  doc.fontSize(14)
      .font("Times-Bold")
      .fillColor("black")
-     .text("Internship Offer Letter", margin, yPosition, { 
+     .text("INTERNSHIP OFFER LETTER", margin, yPosition, { 
        align: "center",
        width: pageWidth - (2 * margin)
      });
@@ -138,7 +224,10 @@ async function generateOfferLetter(doc, student) {
   doc.fontSize(10)
      .font("Times-Roman")
      .fillColor("#666666")
-     .text(`Date: ${new Date().toLocaleDateString()}`, margin, yPosition);
+     .text(`Date: ${getCurrentDateFormatted()}`, margin, yPosition, {
+       align: "right",
+       width: pageWidth - (2.5 * margin)
+     });
 
   yPosition += 30;
   
@@ -172,14 +261,16 @@ async function generateOfferLetter(doc, student) {
 
   // Internship details
   const details = [
-    { label: "• Position:", value: student.department },
+    { label: "• Position:", value: student.department || "Not specified" },
     { 
       label: "• Start Date:", 
       value: new Date(student.startDate).toLocaleDateString("en-GB") 
     },
+   
     { label: "• Duration:", value: duration },
     { label: "• Location:", value: "Roriri Software Solutions Pvt. Ltd, Nallanthapuram, Kalakad" },
     {
+      
       label: "• Stipend:",
       value: student.stipendType === "Unpaid"
         ? "Unpaid Internship"
@@ -187,25 +278,41 @@ async function generateOfferLetter(doc, student) {
       needsRupee: student.stipendType === "Paid"
     }
   ];
+  const fontPath = path.join(__dirname, "../fonts/NotoSans-Bold.ttf");
+let hasNotoFont = false;
+if (fs.existsSync(fontPath)) {
+  doc.registerFont("Noto-Bold", fontPath);
+  hasNotoFont = true;
+  console.log("✅ Noto font registered successfully");
+} else {
+  console.log("⚠️ Noto font not found, using fallback for rupee symbol");
+}
 
-  // Render details with special handling for rupee symbol
-  details.forEach(detail => {
-    doc.fillColor("black")
-       .font("Times-Bold")
-       .text(detail.label.padEnd(22, " "), margin + 10, yPosition)
-       .fillColor("#000000");
-    
-    if (detail.needsRupee && hasNotoFont) {
-      // Use Noto font for rupee symbol
-      doc.font("Noto")
-         .text(detail.value, margin + 80, yPosition)
-         .font("Times-Roman"); // Switch back to Times-Roman
-    } else {
-      doc.font("Times-Roman")
-         .text(detail.value, margin + 80, yPosition);
-    }
-    yPosition += 18;
-  });
+
+// Render details
+details.forEach(detail => {
+  // Print the label
+  doc.fillColor("black")
+     .font("Times-Bold")
+     .text(detail.label, margin + 10, yPosition);
+
+  // If this detail contains Rupee symbol → use Unicode font
+  if (detail.needsRupee && hasNotoFont) {
+    doc.font("Noto-Bold"); // Switch to Noto for ₹
+  } else {
+    doc.font("Times-Roman"); // Normal text
+  }
+
+  // Print the value
+  doc.fillColor("#000000")
+     .text(detail.value, margin + 80, yPosition);
+
+  // Reset font after printing the line
+  doc.font("Times-Roman");
+
+  yPosition += 18;
+});
+
 
   yPosition += 20;
   
@@ -219,7 +326,7 @@ async function generateOfferLetter(doc, student) {
   doc.font("Times-Roman")
      .text("• During the internship, you will work on ", margin + 20, yPosition, { continued: true })
      .font("Times-Bold")
-     .text(student.department, { continued: true })
+     .text(student.department || "assigned", { continued: true })
      .font("Times-Roman")
      .text(" related projects.");
   
@@ -261,7 +368,7 @@ async function generateOfferLetter(doc, student) {
      });
 
   // Signature section
-  yPosition += 40;
+  yPosition += 60;
   
   doc.fontSize(12)
      .font("Times-Bold")
@@ -272,158 +379,174 @@ async function generateOfferLetter(doc, student) {
 
   // Add signature image
   const signaturePath = path.join(__dirname, "../assets/signature.png");
-  if (fs.existsSync(signaturePath)) {
-    doc.image(signaturePath, margin, yPosition, { width: 100, height: 40 });
-    yPosition += 50;
-  } else {
-    yPosition += 20;
-  }
+  addImageSafe(doc, signaturePath, margin, yPosition, { width: 100, height: 40 });
+  
+  yPosition += 50;
 
   doc.font("Times-Bold")
      .fillColor("#000000")
-     .text("Ragupathi,", margin, yPosition)
+     .text("Ragupathi R", margin, yPosition)
      .font("Times-Roman")
      .text("Chief Executive Officer (CEO),", margin, yPosition + 15)
      .font("Times-Bold")
      .text("Roriri Software Solutions Pvt Ltd", margin, yPosition + 35);
-
-  // Add footer image at bottom
-  const footerPath = path.join(__dirname, "../assets/footer.png");
-  if (fs.existsSync(footerPath)) {
-    const footerY = pageHeight - 100;
-    doc.image(footerPath, 0, footerY, { width: pageWidth, height: 100 });
-  }
 }
 
-// ------------------------------
-// COMPLETION LETTER DESIGN
-// ------------------------------
-async function generateCompletionLetter(doc, student) {
-  const pageWidth = doc.page.width;
+async function addCompletionCertificateContentOnTemplate(doc, student) {
+  const pageWidth = doc.page.width; // This will be larger in landscape
   const pageHeight = doc.page.height;
   const margin = 50;
   let yPosition = 80;
 
-  // Calculate duration
-  const duration = calculateDuration(student.startDate, student.endDate);
-
-  // Completion Letter Title
-  doc.fontSize(16)
-     .font("Times-Bold")
-     .fillColor("black")
-     .text("INTERNSHIP COMPLETION LETTER", margin, yPosition, { 
-       align: "center",
-       width: pageWidth - (2 * margin)
-     });
-
-  yPosition += 40;
-
-  // Salutation
-  doc.fontSize(12)
-     .fillColor("#000000")
-     .font("Times-Bold")
-     .text(`Dear ${student.name},`, margin, yPosition);
-
-  yPosition += 25;
-
-  // Main content paragraphs
-  doc.font("Times-Roman")
-     .text("We are delighted to acknowledge the successful completion of your Internship with ", margin, yPosition, { continued: true })
-     .font("Times-Bold")
-     .text("Roriri Software Solutions Pvt Ltd", { continued: true })
-     .font("Times-Roman")
-     .text(". Your Internship, which ran from ", { continued: true })
-     .font("Times-Bold")
-     .text(`${student.startDate} to ${student.endDate}`, { continued: true })
-     .font("Times-Roman")
-     .text(" has come to a successful close, and we are pleased to report that you achieved a perfect attendance record throughout this period.");
-
-  yPosition += 80;
-
-  // Paragraph 2
-  doc.text("Your commitment to your role and your consistent presence at the office have been truly commendable. Your contributions to our ", margin, yPosition, { continued: true })
-     .font("Times-Bold")
-     .text(student.department, { continued: true })
-     .font("Times-Roman")
-     .text(" were highly valued, and your dedication and work ethic have not gone unnoticed.");
-
-  yPosition += 60;
-
-  // Paragraph 3
-  doc.text("It has been a pleasure having you with us as an intern. You brought a fresh perspective to our team, and we hope that your time here was both insightful and rewarding.", margin, yPosition, {
-    width: pageWidth - (2 * margin),
-    align: 'justify'
-  });
-
-  yPosition += 50;
-
-  // Paragraph 4 - Thank you
-  doc.font("Times-Bold")
-     .text(`Thank you once again for your exceptional performance and dedication during this ${duration} of Internship Period.`, margin, yPosition, {
-       width: pageWidth - (2 * margin),
-       align: 'justify'
-     });
-
-  // Signature section
-  yPosition += 50;
+  // Company Header (matches your image exactly)
   
-  doc.fontSize(12)
-     .font("Times-Bold")
-     .fillColor("black")
-     .text("Best regards,", margin, yPosition);
 
-  yPosition += 25;
+  yPosition += 50;
 
-  // Add signature image
-  const signaturePath = path.join(__dirname, "../assets/signature.png");
-  if (fs.existsSync(signaturePath)) {
-    doc.image(signaturePath, margin, yPosition, { width: 100, height: 40 });
-    yPosition += 50;
-  } else {
-    yPosition += 20;
-  }
+  // "Presented to" text
+  
 
-  doc.font("Times-Bold")
-     .fillColor("#000000")
-     .text("Ragupathi R,", margin, yPosition)
-     .font("Times-Roman")
-     .text("Chief Executive Officer (CEO),", margin, yPosition + 15)
-     .font("Times-Bold")
-     .text("Roriri Software Solutions Pvt Ltd", margin, yPosition + 35);
+  yPosition += 97;
+doc.registerFont("Poppins-Bold", "fonts/Poppins-Bold.ttf");
 
-  // Add footer image at bottom
+  // Student Name (prominently displayed)
+  doc.fontSize(18)
+     .font("Poppins-Bold")
+     .fillColor("#6F6F6F")
+     .text(student.name, margin, yPosition, {
+       align: "center",
+       characterSpacing: 1,
+       width: pageWidth - (1  * margin)
+     });
+
+  yPosition += 35;
+
+  // Main certificate text with only name, department, and dates
+ 
+
+  
+
+  doc.fontSize(18)
+     .font("Poppins-Bold")
+     .fillColor("#6F6F6F")
+     .text(student.department, margin, yPosition, {
+       align: "center",
+       characterSpacing: 1,
+       width: pageWidth - (-3 * margin),
+       lineGap: 5
+     });
+
+  yPosition += 34;
+ const startDateFormatted = new Date(student.startDate).toLocaleDateString('en-GB').replace(/\//g, '/');
+  const endDateFormatted = new Date(student.endDate).toLocaleDateString('en-GB').replace(/\//g, '/');
+// Measure text widths
+const startWidth = doc.widthOfString(startDateFormatted);
+const endWidth = doc.widthOfString(endDateFormatted);
+
+// How much space you want between them
+const gap = 100; // adjust gap here
+
+// Compute total centered positioning
+const totalWidth = startWidth + gap + endWidth;
+const startX = (pageWidth - totalWidth) /4;
+const endX = startX + startWidth + gap;
+
+// Draw first date
+doc.fontSize(18)
+  .font("Poppins-Bold")
+  .fillColor("#6F6F6F")
+  .text(startDateFormatted, startX, yPosition);
+
+// Draw second date
+doc.fontSize(18)
+  .font("Poppins-Bold")
+  .fillColor("#6F6F6F")
+  .text(endDateFormatted, endX, yPosition);
+
+ 
+
+  // Signature section - Text only
 
 }
 
 // ------------------------------
-// GENERATE PDF FOR PREVIEW (UPDATED)
+// DYNAMIC PDF GENERATION (FALLBACK - WITHOUT TEMPLATES)
+// ------------------------------
+async function generateDynamicPDF(type, student, shouldSave = false) {
+  const certificatesDir = path.join(__dirname, "../certificates");
+  if (!fs.existsSync(certificatesDir)) {
+    fs.mkdirSync(certificatesDir, { recursive: true });
+  }
+
+  const fileName = `${type}_${student.name.replace(/\s+/g, "_")}_${Date.now()}.pdf`;
+  const filePath = path.join(certificatesDir, fileName);
+
+  let doc;
+  if (type === "completion") {
+    doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margins: { top: 50, bottom: 50, left: 50, right: 50 }
+    });
+  } else {
+    doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 50, bottom: 50, left: 50, right: 50 }
+    });
+  }
+  
+  const writeStream = fs.createWriteStream(filePath);
+  doc.pipe(writeStream);
+
+  if (type === "offer") {
+    await addOfferLetterContentOnTemplate(doc, student);
+  } else if (type === "completion") {
+    await addCompletionCertificateContentOnTemplate(doc, student);
+  }
+
+  doc.end();
+
+  return new Promise((resolve, reject) => {
+    writeStream.on("finish", () => resolve(filePath));
+    writeStream.on("error", reject);
+  });
+}
+
+// ------------------------------
+// ROUTES (UPDATED - REMOVED CERTIFICATE ROUTE)
 // ------------------------------
 router.post("/generate-preview", async (req, res) => {
   try {
-    const { studentId, type } = req.body; // type: 'offer' or 'completion'
+    const { studentId, type } = req.body;
+    
+    // Validate type
+    if (type !== "offer" && type !== "completion") {
+      return res.status(400).json({ message: "Invalid type. Only 'offer' and 'completion' are supported." });
+    }
+
     const student = await Student.findByPk(studentId);
 
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Validate required student data
     if (!student.name || !student.college || !student.department || !student.startDate || !student.endDate) {
       return res.status(400).json({ message: "Student data is incomplete. Please ensure all fields are filled." });
     }
 
     console.log(`📄 Generating ${type} letter preview for:`, student.name);
-    const filePath = await generatePDF(type, student);
+    const filePath = await generatePDFFromTemplate(type, student, false); // false = don't save permanently for preview
 
-    // Read the generated PDF file and send as base64
     const pdfBuffer = fs.readFileSync(filePath);
     const base64PDF = pdfBuffer.toString('base64');
+
+    // Clean up the file after reading (for preview only)
+    fs.unlinkSync(filePath);
 
     res.json({
       success: true,
       pdfData: base64PDF,
       fileName: `${type}_letter_${student.name.replace(/\s+/g, '_')}.pdf`,
-      filePath: filePath, // Return file path for debugging
       message: `${type.charAt(0).toUpperCase() + type.slice(1)} letter generated successfully for preview!`
     });
   } catch (err) {
@@ -432,9 +555,6 @@ router.post("/generate-preview", async (req, res) => {
   }
 });
 
-// ------------------------------
-// SEND OFFER LETTER (UPDATED)
-// ------------------------------
 router.post("/send-offer", async (req, res) => {
   try {
     const { studentId } = req.body;
@@ -444,13 +564,12 @@ router.post("/send-offer", async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Validate required student data
     if (!student.name || !student.college || !student.department || !student.startDate || !student.endDate) {
       return res.status(400).json({ message: "Student data is incomplete. Please ensure all fields are filled." });
     }
 
     console.log("📄 Generating professional offer letter for:", student.name);
-    const filePath = await generatePDF("offer", student);
+    const filePath = await generatePDFFromTemplate("offer", student, true); // true = save permanently
 
     console.log("📤 Sending offer letter email to:", student.email);
     await sendEmail(
@@ -478,10 +597,12 @@ hr@roririsolutions.com`,
     student.offerSent = true;
     await student.save();
 
+    // DO NOT delete the file - keep it in certificates folder for future reference
+    console.log(`✅ Offer letter saved permanently at: ${filePath}`);
+
     res.json({ 
       success: true, 
-      message: "Professional offer letter sent successfully!",
-      filePath: filePath // For debugging
+      message: "Professional offer letter sent successfully and saved for future reference!"
     });
   } catch (err) {
     console.error("❌ Error sending offer letter:", err);
@@ -489,9 +610,6 @@ hr@roririsolutions.com`,
   }
 });
 
-// ------------------------------
-// SEND COMPLETION CERTIFICATE (UPDATED)
-// ------------------------------
 router.post("/send-completion", async (req, res) => {
   try {
     const { studentId } = req.body;
@@ -501,23 +619,22 @@ router.post("/send-completion", async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Validate required student data
     if (!student.name || !student.college || !student.department || !student.startDate || !student.endDate) {
       return res.status(400).json({ message: "Student data is incomplete. Please ensure all fields are filled." });
     }
 
-    console.log("📄 Generating professional completion letter for:", student.name);
-    const filePath = await generatePDF("completion", student);
+    console.log("📄 Generating professional completion certificate for:", student.name);
+    const filePath = await generatePDFFromTemplate("completion", student, true); // true = save permanently
 
-    console.log("📤 Sending completion letter to:", student.email);
+    console.log("📤 Sending completion certificate to:", student.email);
     await sendEmail(
       student.email,
-      "Internship Completion Letter - RORIRI SOFTWARE SOLUTIONS",
+      "Internship Completion Certificate - RORIRI SOFTWARE SOLUTIONS",
       `Dear ${student.name},
 
 Congratulations on successfully completing your internship at RORIRI SOFTWARE SOLUTIONS!
 
-We are pleased to attach your Internship Completion Letter in recognition of your hard work and dedication during your time with us in the ${student.department} department.
+We are pleased to attach your official Internship Completion Certificate in recognition of your hard work and dedication during your time with us in the ${student.department} department.
 
 Your contributions from ${student.startDate} to ${student.endDate} have been valuable, and we wish you continued success in your academic and professional journey.
 
@@ -527,21 +644,25 @@ Best Regards,
 Internship Coordinator
 RORIRI SOFTWARE SOLUTIONS
 hr@roririsolutions.com`,
-      [{ filename: `Completion_Letter_${student.name.replace(/\s+/g, '_')}.pdf`, path: filePath }]
+      [{ filename: `Completion_Certificate_${student.name.replace(/\s+/g, '_')}.pdf`, path: filePath }]
     );
 
     student.completionSent = true;
     await student.save();
 
+    // DO NOT delete the file - keep it in certificates folder for future reference
+    console.log(`✅ Completion certificate saved permanently at: ${filePath}`);
+
     res.json({
       success: true,
-      message: "Professional completion letter sent successfully!",
-      filePath: filePath // For debugging
+      message: "Professional completion certificate sent successfully and saved for future reference!"
     });
   } catch (err) {
-    console.error("❌ Error sending completion letter:", err);
+    console.error("❌ Error sending completion certificate:", err);
     res.status(500).json({ message: "Server error: " + err.message });
   }
 });
+
+
 
 module.exports = router;

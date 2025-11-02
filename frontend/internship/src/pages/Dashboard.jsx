@@ -19,12 +19,6 @@ const Dashboard = () => {
             </p>
           </div>
           <div className="flex gap-3 w-full sm:w-auto">
-            <Link
-              to="/register"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 text-center shadow-sm hover:shadow-md flex-1 sm:flex-none"
-            >
-              Add Admin
-            </Link>
             <button 
               onClick={logout}
               className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-sm hover:shadow-md flex-1 sm:flex-none"
