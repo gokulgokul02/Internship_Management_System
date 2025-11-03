@@ -1,57 +1,5 @@
 // backend/server.js
-/*
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
-const { sequelize } = require("./config/db");
 
-const app = express();
-
-// ✅ Middlewares
-app.use(cors());
-app.use(express.json());
-
-// ✅ Certificate Routes and Static Files
-const certificateRoutes = require('./routes/certificates');
-app.use('/api/certificates', certificateRoutes);
-app.use('/certificates', express.static(path.join(__dirname, 'certificates')));
-
-// ✅ Default Root Route
-app.get("/", (req, res) => {
-  res.send("API is running successfully ✅");
-});
-
-// ✅ Other Routes
-app.use("/api/admin", require("./routes/adminRoutes"));
-app.use("/api/students", require("./routes/studentRoutes"));
-app.use("/api/register-student", require("./routes/studentRegistration")); // ✅ FIXED
-app.use("/api/dashboard", require("./routes/dashboardRoutes"));
-app.use("/api/payments", require("./routes/paymentRoutes"));
-
-// ✅ Start Server
-const PORT = process.env.PORT || 5000;
-
-const start = async () => {
-  try {
-    await sequelize.authenticate();
-    console.log("✅ Database connected successfully.");
-
-    // ✅ IMPORTANT: Removed alter:true to prevent duplicate indexes & table corruption
-    await sequelize.sync();
-    console.log("✅ Models synced successfully.");
-
-    app.listen(PORT, () =>
-      console.log(`🚀 Server running at: http://localhost:${PORT}`)
-    );
-  } catch (err) {
-    console.error("❌ Server start error:", err);
-    process.exit(1);
-  }
-};
-
-start();
-*/
 // backend/server.js
 require("dotenv").config();
 const express = require("express");
@@ -86,14 +34,15 @@ const certificateRoutes = require('./routes/certificates');
 app.use('/api/certificates', certificateRoutes);
 
 // ✅ Default Root Route
-app.get("/", (req, res) => {
-  res.send("API is running successfully ✅");
-});
+
 
 // ✅ Other Routes
+const dashboardRoutes = require("./routes/dashboardRoutes");
+app.use("/api", dashboardRoutes);
+
+
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/students", require("./routes/studentRoutes"));
-app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 
 // ✅ Global error handler
@@ -129,5 +78,9 @@ const start = async () => {
     process.exit(1);
   }
 };
+app.listen(5000, "0.0.0.0", () => {
+  console.log("Server running on http://0.0.0.0:5000");
+});
+
 
 start();

@@ -1,14 +1,59 @@
 const express = require("express");
+const { Op } = require("sequelize");
 const router = express.Router();
-const { Student, Certificate, Admin } = require("../models");
+const { Student, Admin } = require("../models");
 
-router.get("/", async (req, res) => {
+router.get("/dashboard", async (req, res) => {
   try {
-    const totalStudents = await Student.count();
-    const certificatesIssued = await Certificate.count();
-    const activeAdmins = await Admin.count();
+    const [
+      totalStudents,
+      activeAdmins,
+      approvedStudents,
+      pendingStudents,
+      paidInternships,
+      unpaidInternships,
+      completePayments,
+      pendingPayments,
+    ] = await Promise.all([
+      Student.count(),
+      Admin.count(),
+      Student.count({ where: { isApproved: true } }),   // ✅ model field
+      Student.count({ where: { isApproved: false } }),  // ✅ model field
+      Student.count({ where: { stipendType: "Paid" } }),   // ✅ model field
+      Student.count({ where: { stipendType: "Unpaid" } }),  // ✅ model field
+      Student.count({ where: {paymentStatus:"Completed"}}),
+      Student.count({where:{paymentStatus:"Pending"}})
+    ]);
 
-    res.json({ totalStudents, certificatesIssued, activeAdmins });
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const recentStudents = await Student.count({
+      where: { createdAt: { [Op.gte]: oneWeekAgo } }
+    });
+
+    const completedPayments = await Student.count({
+      where: { stipendType: "Paid", paymentStatus: "Completed" } // ✅ model field
+    });
+
+    res.json({
+      overview: {
+        totalStudents,
+        activeAdmins,
+        recentStudents,
+        completedPayments,
+        certificatesIssued: 0 // ✅ CERTIFICATES REMOVED (no such field)
+      },
+      students: {
+        approved: approvedStudents,
+        pending: pendingStudents,
+        paid: paidInternships,
+        unpaid: unpaidInternships,
+        payed:completePayments,
+        nopaid:pendingPayments
+      }
+    });
+
   } catch (err) {
     console.error("Dashboard Error:", err);
     res.status(500).json({ message: "Server Error" });
