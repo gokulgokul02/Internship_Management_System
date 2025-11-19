@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import Layout from "../components/Layout"; // Import Layout
 
 const API_BASE = "http://localhost:5000/api/admin";
 
@@ -203,245 +204,251 @@ const Admins = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Toast Notification */}
-        <Toast />
+    <Layout pageTitle="Admin Management">
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Toast Notification */}
+          <Toast />
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Management</h1>
-            <p className="text-gray-600">Manage administrator accounts and permissions</p>
-            {!isSuperAdmin && (
-              <p className="text-sm text-yellow-600 mt-1">
-                ⚠️ You have limited permissions as a regular admin
-              </p>
-            )}
-          </div>
-          
-          {isSuperAdmin && (
-            <button
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-sm hover:shadow-md flex items-center gap-2 mt-4 sm:mt-0"
-              onClick={() => {
-                setForm({ email: "", password: "", type: "ADMIN" });
-                setEditId(null);
-                setShowForm(true);
-              }}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Admin
-            </button>
-          )}
-        </div>
-
-        {/* Form */}
-        {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {editId ? "Edit Admin" : "Add New Admin"}
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Header Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                  placeholder="Enter email address"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
+                <h1 className="text-2xl font-bold text-gray-800">Admin Management</h1>
+                <p className="text-gray-600 mt-1">
+                  Manage administrator accounts and permissions
+                </p>
+                {!isSuperAdmin && (
+                  <p className="text-sm text-yellow-600 mt-2">
+                    ⚠️ You have limited permissions as a regular admin
+                  </p>
+                )}
               </div>
+              
+              {isSuperAdmin && (
+                <button
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
+                  onClick={() => {
+                    setForm({ email: "", password: "", type: "ADMIN" });
+                    setEditId(null);
+                    setShowForm(true);
+                  }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Admin
+                </button>
+              )}
+            </div>
+          </div>
 
-              {!editId && (
+          {/* Form Section */}
+          {showForm && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                {editId ? "Edit Admin" : "Add New Admin"}
+              </h2>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Password *
+                    Email Address *
                   </label>
                   <input
-                    type="password"
+                    type="email"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    placeholder="Enter password (min. 6 characters)"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Enter email address"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
-                    minLength={6}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Password must be at least 6 characters long
-                  </p>
                 </div>
-              )}
 
-              {isSuperAdmin && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Admin Type
-                  </label>
-                  <select
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    value={form.type}
-                    onChange={(e) => setForm({ ...form, type: e.target.value })}
+                {!editId && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Password *
+                    </label>
+                    <input
+                      type="password"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                      placeholder="Enter password (min. 6 characters)"
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      required
+                      minLength={6}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Password must be at least 6 characters long
+                    </p>
+                  </div>
+                )}
+
+                {isSuperAdmin && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Admin Type
+                    </label>
+                    <select
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                      value={form.type}
+                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                    >
+                      <option value="ADMIN">Admin</option>
+                      <option value="SUPER_ADMIN">Super Admin</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
                   >
-                    <option value="ADMIN">Admin</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
-                  </select>
+                    {loading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        {editId ? "Updating..." : "Creating..."}
+                      </>
+                    ) : (
+                      editId ? "Update Admin" : "Create Admin"
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={loading}
+                    className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </button>
                 </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      {editId ? "Updating..." : "Creating..."}
-                    </>
-                  ) : (
-                    editId ? "Update Admin" : "Create Admin"
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
-                  onClick={handleCancel}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Admins Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-gray-900">Administrator Accounts</h2>
-              <div className="text-sm text-gray-500">
-                {admins.length} admin{admins.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </div>
-
-          {loading && admins.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-gray-500 mt-2">Loading admins...</p>
-            </div>
-          ) : admins.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-gray-500 text-lg">No admin accounts found</p>
-              <p className="text-gray-400 mt-1">
-                {isSuperAdmin 
-                  ? 'Click "Add Admin" to create the first admin account' 
-                  : 'Only Super Admin can create new admin accounts'
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      #
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email Address
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {admins.map((admin, index) => (
-                    <tr key={admin.id} className="hover:bg-gray-50 transition-colors duration-150">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        <div className="flex items-center gap-2">
-                          {admin.email}
-                          {parseInt(currentAdmin.id) === parseInt(admin.id) && (
-                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                              You
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {getAdminTypeBadge(admin.type)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(admin.createdAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex justify-end gap-2">
-                          {/* Regular admins can only edit themselves */}
-                          {(isSuperAdmin || parseInt(currentAdmin.id) === parseInt(admin.id)) && (
-                            <button
-                              onClick={() => handleEdit(admin)}
-                              disabled={loading}
-                              className="bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm"
-                            >
-                              Edit
-                            </button>
-                          )}
-                          
-                          {/* Only SuperAdmin can delete, and cannot delete self */}
-                          {isSuperAdmin && parseInt(currentAdmin.id) !== parseInt(admin.id) && (
-                            <button
-                              onClick={() => handleDelete(admin.id)}
-                              disabled={loading}
-                              className="bg-red-100 hover:bg-red-200 disabled:bg-red-50 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              </form>
             </div>
           )}
-        </div>
 
-        {/* Permissions Info */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <h3 className="text-sm font-medium text-blue-800 mb-2">Permissions Information</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• <strong>Super Admin:</strong> Can create, edit, and delete all admin accounts</li>
-            <li>• <strong>Admin:</strong> Can only edit their own profile</li>
-            <li>• Self-deletion is not allowed for security reasons</li>
-          </ul>
+          {/* Admins Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-gray-900">Administrator Accounts</h2>
+                <div className="text-sm text-gray-500">
+                  {admins.length} admin{admins.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            </div>
+
+            {loading && admins.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-gray-500 mt-2">Loading admins...</p>
+              </div>
+            ) : admins.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-gray-500 text-lg">No admin accounts found</p>
+                <p className="text-gray-400 mt-1">
+                  {isSuperAdmin 
+                    ? 'Click "Add Admin" to create the first admin account' 
+                    : 'Only Super Admin can create new admin accounts'
+                  }
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        #
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Email Address
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created
+                      </th>
+                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {admins.map((admin, index) => (
+                      <tr key={admin.id} className="hover:bg-gray-50 transition-colors duration-150">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {index + 1}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          <div className="flex items-center gap-2">
+                            {admin.email}
+                            {parseInt(currentAdmin.id) === parseInt(admin.id) && (
+                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {getAdminTypeBadge(admin.type)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(admin.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end gap-2">
+                            {/* Regular admins can only edit themselves */}
+                            {(isSuperAdmin || parseInt(currentAdmin.id) === parseInt(admin.id)) && (
+                              <button
+                                onClick={() => handleEdit(admin)}
+                                disabled={loading}
+                                className="bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm"
+                              >
+                                Edit
+                              </button>
+                            )}
+                            
+                            {/* Only SuperAdmin can delete, and cannot delete self */}
+                            {isSuperAdmin && parseInt(currentAdmin.id) !== parseInt(admin.id) && (
+                              <button
+                                onClick={() => handleDelete(admin.id)}
+                                disabled={loading}
+                                className="bg-red-100 hover:bg-red-200 disabled:bg-red-50 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Permissions Info */}
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="text-sm font-medium text-blue-800 mb-2">Permissions Information</h3>
+            <ul className="text-sm text-blue-700 space-y-1">
+              <li>• <strong>Super Admin:</strong> Can create, edit, and delete all admin accounts</li>
+              <li>• <strong>Admin:</strong> Can only edit their own profile</li>
+              <li>• Self-deletion is not allowed for security reasons</li>
+            </ul>
+          </div>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 };
 

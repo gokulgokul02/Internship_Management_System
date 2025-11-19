@@ -1,4 +1,3 @@
-// backend/models/Student.js
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/db");
 
@@ -17,74 +16,178 @@ const Student = sequelize.define("Student", {
     type: DataTypes.STRING(5),
     primaryKey: true,
     allowNull: false,
+    defaultValue: () => generateStudentId() // Add default value function
   },
 
   name: { type: DataTypes.STRING, allowNull: false },
   email: { type: DataTypes.STRING, allowNull: false },
-  college: { type: DataTypes.STRING },
-  department: { type: DataTypes.STRING },
+  phone: { type: DataTypes.STRING, allowNull: true },
+  college: { type: DataTypes.STRING, allowNull: false },
+  department: { type: DataTypes.STRING, allowNull: false },
 
-  startDate: { type: DataTypes.DATEONLY },
-  endDate: { type: DataTypes.DATEONLY },
+  internshipType: {
+    type: DataTypes.ENUM("paid", "unpaid"),
+    allowNull: false,
+    defaultValue: "unpaid",
+    field: "internship_type"
+  },
 
-  isApproved: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+  duration: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
+
+  startDate: { 
+    type: DataTypes.DATEONLY, 
+    allowNull: true,
+    field: "start_date" 
+  },
+  endDate: { 
+    type: DataTypes.DATEONLY, 
+    allowNull: true,
+    field: "end_date" 
+  },
+
+  // ✅ Internship Status
+  internshipStatus: {
+    type: DataTypes.ENUM("Active", "Completed", "Discontinued"),
+    allowNull: false,
+    defaultValue: "Active",
+    field: "internship_status"
+  },
+
+  isApproved: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    field: "is_approved" 
   },
 
   stipendType: {
     type: DataTypes.ENUM("Paid", "Unpaid"),
     allowNull: false,
     defaultValue: "Unpaid",
+    field: "stipend_type"
   },
 
-  stipendAmount: {
-    type: DataTypes.INTEGER,
+  stipendAmount: { 
+    type: DataTypes.INTEGER, 
     allowNull: true,
+    field: "stipend_amount" 
   },
 
-  // ✅ NEW: Payment Mode
   paymentMode: {
-    type: DataTypes.ENUM("Online", "Cash"),
+    type: DataTypes.ENUM("Online", "Cash", "Advance"),
     allowNull: true,
     defaultValue: null,
+    field: "payment_mode"
+  },
+
+  totalAmount: { 
+    type: DataTypes.DECIMAL(10, 2), 
+    allowNull: true, 
+    defaultValue: 0,
+    field: "total_amount" 
+  },
+  advanceAmount: { 
+    type: DataTypes.DECIMAL(10, 2), 
+    allowNull: true, 
+    defaultValue: 0,
+    field: "advance_amount" 
+  },
+  remainingAmount: { 
+    type: DataTypes.DECIMAL(10, 2), 
+    allowNull: true, 
+    defaultValue: 0,
+    field: "remaining_amount" 
   },
 
   paymentStatus: {
-    type: DataTypes.ENUM("Pending", "Completed", "Failed", "Refunded"),
+    type: DataTypes.ENUM("Pending", "Completed", "Failed", "Refunded", "Partially_Paid"),
     allowNull: false,
     defaultValue: "Pending",
+    field: "payment_status"
   },
 
-  razorpayTransactionId: { type: DataTypes.STRING, allowNull: true },
-  senderUpiId: { type: DataTypes.STRING, allowNull: true },
-  paymentScreenshot: { type: DataTypes.STRING, allowNull: true,field: "payment_screenshot"}, // IMPORTANT },
-  paymentDate: { type: DataTypes.DATE, allowNull: true },
+  razorpayTransactionId: { 
+    type: DataTypes.STRING, 
+    allowNull: true,
+    field: "razorpay_transaction_id" 
+  },
+  senderUpiId: { 
+    type: DataTypes.STRING, 
+    allowNull: true,
+    field: "sender_upi_id" 
+  },
 
-  unpaidProofScreenshot: { type: DataTypes.STRING, allowNull: true },
-  unpaidDeclarationDate: { type: DataTypes.DATE, allowNull: true },
+  paymentScreenshot: { 
+    type: DataTypes.STRING, 
+    allowNull: true, 
+    field: "payment_screenshot" 
+  },
+  paymentDate: { 
+    type: DataTypes.DATE, 
+    allowNull: true,
+    field: "payment_date" 
+  },
+  unpaidProofScreenshot: { 
+    type: DataTypes.STRING, 
+    allowNull: true,
+    field: "unpaid_proof_screenshot" 
+  },
+  unpaidDeclarationDate: { 
+    type: DataTypes.DATE, 
+    allowNull: true,
+    field: "unpaid_declaration_date" 
+  },
 
-  offerSent: { type: DataTypes.BOOLEAN, defaultValue: false },
-  completionSent: { type: DataTypes.BOOLEAN, defaultValue: false },
+  offerSent: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    field: "offer_sent" 
+  },
+  completionSent: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    field: "completion_sent" 
+  },
+
+  reason: { type: DataTypes.TEXT, allowNull: true },
 
 }, {
   tableName: "students",
   timestamps: true,
-});
+  hooks: {
+    beforeValidate: async (student) => {
+      // Generate unique ID only if it doesn't exist
+      if (!student.id) {
+        let newId;
+        let exists = true;
+        let attempts = 0;
+        const maxAttempts = 10;
 
-// ✅ Generate ID before validation — makes sure ID is unique
-Student.beforeValidate(async (student) => {
-  if (!student.id) {
-    let newId;
-    let exists = true;
+        while (exists && attempts < maxAttempts) {
+          newId = generateStudentId();
+          const found = await Student.findOne({ where: { id: newId } });
+          exists = !!found;
+          attempts++;
+        }
 
-    while (exists) {
-      newId = generateStudentId();
-      const found = await Student.findOne({ where: { id: newId } });
-      exists = !!found;
+        if (exists) {
+          // Fallback: timestamp-based ID
+          newId = 'S' + Date.now().toString().slice(-4);
+        }
+
+        student.id = newId;
+      }
+
+      // Auto-set stipendType based on internshipType
+      if (student.internshipType === "paid") {
+        student.stipendType = "Paid";
+      } else {
+        student.stipendType = "Unpaid";
+      }
     }
-
-    student.id = newId; // Example: "A9M2K"
   }
 });
 

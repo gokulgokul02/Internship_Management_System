@@ -1,6 +1,4 @@
 // backend/server.js
-
-// backend/server.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -27,23 +25,27 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // ✅ Static file serving
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use('/certificates', express.static(path.join(__dirname, 'certificates')));
+app.use("/certificates", express.static(path.join(__dirname, "certificates")));
 
-// ✅ Certificate Routes
-const certificateRoutes = require('./routes/certificates');
-app.use('/api/certificates', certificateRoutes);
-
-// ✅ Default Root Route
-
-
-// ✅ Other Routes
+// ✅ Import Routes
+const certificateRoutes = require("./routes/certificates");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const studentRoutes = require("./routes/studentRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+
+// ✅ NEW: Internship Type Route
+const internshipTypeRoutes = require("./routes/internshipTypeRoutes");
+
+// ✅ Use Routes
+app.use("/api/certificates", certificateRoutes);
 app.use("/api", dashboardRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/students", studentRoutes);
+app.use("/api/payments", paymentRoutes);
 
-
-app.use("/api/admin", require("./routes/adminRoutes"));
-app.use("/api/students", require("./routes/studentRoutes"));
-app.use("/api/payments", require("./routes/paymentRoutes"));
+// ✅ Register InternshipType Routes
+app.use("/api", internshipTypeRoutes);   // <-- IMPORTANT
 
 // ✅ Global error handler
 app.use((error, req, res, next) => {
@@ -63,24 +65,19 @@ const start = async () => {
     await sequelize.authenticate();
     console.log("✅ Database connected successfully.");
 
-    // ✅ IMPORTANT: Removed alter:true to prevent duplicate indexes & table corruption
+    // Do model sync (no alter:true)
     await sequelize.sync();
     console.log("✅ Models synced successfully.");
 
-    app.listen(PORT, () =>
-      console.log(`🚀 Server running at: http://localhost:${PORT}`)
-    );
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running at: http://localhost:${PORT}`);
+    });
+
     console.log("📁 Uploads directory ready:", uploadsDir);
-    console.log("📁 Certificates directory ready:", path.join(__dirname, 'certificates'));
-    console.log("💾 File upload limit: 50MB");
   } catch (err) {
     console.error("❌ Server start error:", err);
     process.exit(1);
   }
 };
-app.listen(5000, "0.0.0.0", () => {
-  console.log("Server running on http://0.0.0.0:5000");
-});
-
 
 start();
